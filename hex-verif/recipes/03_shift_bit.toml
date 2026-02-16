@@ -1,0 +1,29 @@
+# S-type (shift, bit manipulation, permutation) instructions
+[generation]
+num_packets = 50
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+
+[filters]
+exclude = [
+    "is solo",
+    "is call or is return",
+    "has side_effects",
+    "is predicated_new",
+    "is cvi",
+    "type is TypeJ or type is TypeCJ or type is TypeNCJ or type is TypeCR",
+]
+include = "type is TypeS_2op or type is TypeS_3op"
+blocked_features = [
+    "UseAudio", "UseCompound", "UseCabac", "UseZReg",
+    "HasV81", "UseHVXV79", "UseHVXV81",
+    "UseHVXFloatingPoint", "UseHVXIEEEFP", "UseHVXQFloat",
+]
+skip_terms = [
+    "mem", "swi", "trap", "jump", "call", "dealloc",
+    "allocframe", "r29", "r30", "r31", "loop",
+    "nmi", "stop", "rte", "wait",
+    "decbin",
+]

@@ -1,0 +1,14 @@
+[package]
+name = "hex-packet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hex-dump = { path = "../hex-dump" }
+hex-instset = { path = "../hex-instset" }
+anyhow = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+hex-prog = { path = "../hex-prog" }
