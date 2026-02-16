@@ -1,0 +1,39 @@
+# Broad scalar mix -- all non-CVI types, larger packet count for coverage
+[generation]
+num_packets = 80
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+
+[filters]
+exclude = [
+    "is solo",
+    "is call or is return",
+    "has side_effects",
+    "is predicated_new",
+    "is cvi",
+    "type is TypeJ or type is TypeCJ or type is TypeNCJ or type is TypeCR",
+]
+blocked_features = [
+    "UseAudio", "UseCompound", "UseCabac", "UseZReg",
+    "HasV81", "UseHVXV79", "UseHVXV81",
+    "UseHVXFloatingPoint", "UseHVXIEEEFP", "UseHVXQFloat",
+]
+skip_terms = [
+    "mem", "swi", "trap", "jump", "call", "dealloc",
+    "allocframe", "r29", "r30", "r31", "loop",
+    "nmi", "stop", "rte", "wait",
+    "scatter", "gather", ":raw", ".new",
+    "dfmake", "sfmake", "convert", "decbin",
+    "cmpyiw", "cmpyrw",
+    "vhist", "vwhist", "vshuff", "vdeal", "vcombine",
+    "dczero", "dcclean", "dcinv",
+    "l2lock", "l2unlock", "l2fetch",
+    "release", "dmlink", "start", "setprio", "diag",
+    "pause", "resume",
+    "icinv", "tlbw", "tlbp", "tlbinvasid",
+    "k0lock", "k0unlock", "tlblock", "tlbunlock",
+    "sfmax", "sfmin", "dfmin", "dfmax",
+    "callr", "jumpr",
+]
