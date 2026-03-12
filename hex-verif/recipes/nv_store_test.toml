@@ -1,0 +1,11 @@
+# Recipe to exercise NV-store synthesis (new-value stores with producers).
+# Enables memory ops and new-value consumers.
+
+[generation]
+num_packets = 30
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+allow_new_value = true
+allow_memory_ops = true

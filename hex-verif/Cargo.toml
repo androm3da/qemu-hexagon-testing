@@ -1,0 +1,21 @@
+[workspace]
+members = ["hex-dump", "hex-instset", "hex-packet", "hex-prog", "hex-dbg"]
+resolver = "2"
+
+[package]
+name = "hex-verif"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hex-verif"
+path = "src/main.rs"
+
+[dependencies]
+hex-dump = { path = "hex-dump" }
+hex-instset = { path = "hex-instset" }
+hex-packet = { path = "hex-packet" }
+hex-prog = { path = "hex-prog" }
+hex-dbg = { path = "hex-dbg" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }

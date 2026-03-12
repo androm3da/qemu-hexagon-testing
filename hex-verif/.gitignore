@@ -1,0 +1,9 @@
+/target/
+/results_*/
+/stress_test_results*/
+instructions.json
+*.pdf
+*.elf
+*.o
+plan.md
+fails.md

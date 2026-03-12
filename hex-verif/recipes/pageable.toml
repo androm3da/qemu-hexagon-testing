@@ -1,0 +1,27 @@
+# Recipe to exercise TLB miss + packet replay via pageable memory.
+#
+# Memory ops target a VA outside the default TLB mapping. Each iteration
+# invalidates the TLB entry, forcing a TLB miss on the first access.
+# The fault handler fills the TLB from the software PTE, and the CPU
+# replays the entire packet — a challenging test for emulators.
+
+[generation]
+num_packets = 30
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+allow_memory_ops = true
+allow_pageable = true
+
+[filters]
+# Only allow simple base+immediate loads/stores and ALU ops.
+# Exclude complex addressing modes (circ, brev, auto-increment,
+# GP-relative, absolute, memops, register-offset) which aren't
+# fully handled by gen_setup_packets.
+skip_terms = [
+    "jump", "r28", "r29", "r30", "r31",
+    "circ", "brev", "++", "<<#", ":raw",
+    "m0", "m1", "abs", "gp",
+    "memop",
+]
