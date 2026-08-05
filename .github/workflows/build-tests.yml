@@ -393,6 +393,34 @@ jobs:
         path: arch_tests_uart.tar.gz
         retention-days: 90
 
+    - name: Build qemu_bench NN-primitive benchmarks
+      run: |
+        HEXAGON_CLANG="${HEXAGON_LINUX_TOOLCHAIN}/clang" \
+        HEXAGON_QHL_HVX_DIR="${HEXAGON_SDK_ROOT}/libs/qhl_hvx" \
+        HEXAGON_QHCOMPLEX_INC="${HEXAGON_SDK_ROOT}/libs/qhl/inc/qhcomplex" \
+        qemu_bench/scripts/build.sh
+        echo "Built qemu_bench binaries:"
+        ls -la qemu_bench/output/
+
+    - name: Create qemu_bench package
+      run: |
+        echo "Creating qemu_bench benchmark package..."
+        mkdir -p qemu_bench_package
+        cp -r qemu_bench/output/. qemu_bench_package/
+        tar -czf qemu_bench.tar.gz qemu_bench_package/
+        echo "qemu_bench package contents:"
+        ls -la qemu_bench_package/
+        echo ""
+        echo "qemu_bench tarball created:"
+        ls -la qemu_bench.tar.gz
+
+    - name: Archive qemu_bench package
+      uses: actions/upload-artifact@v4
+      with:
+        name: qemu-bench-package
+        path: qemu_bench.tar.gz
+        retention-days: 90
+
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-tests
