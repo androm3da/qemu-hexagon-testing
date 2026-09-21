@@ -25,5 +25,5 @@ blocked_features = [
 skip_terms = [
     "dckill", "l2kill", "l2cleanidx", "l2invidx", "l2gunlock", "dctag", "dcinva", "dccleana", "dccleaninva", "ictag", "icdatar", "l2tag", "l2gclean", "l2cleaninv", "l2unlock", "l2lock", "l2fetch", "dcclean", "dcinv", "dczero", "dcfetch", "icinv", "syncht", "swi", "trap", "jump", "call", "dealloc",
     "allocframe", "r29", "r30", "r31", "loop",
-    "nmi", "stop", "rte", "wait", ":deprecated",
+    "nmi", "stop", "rte", "wait", ":deprecated", "tlbmatch",
 ]
