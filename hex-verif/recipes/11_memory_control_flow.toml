@@ -1,0 +1,30 @@
+# Scalar ALU + memory + control flow
+[generation]
+num_packets = 50
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+allow_mem_ops = true
+allow_control_flow = true
+
+[filters]
+exclude = [
+    "is solo",
+    "is call or is return",
+    "has side_effects",
+    "is predicated_new",
+    "is cvi",
+    "type is TypeJ or type is TypeCJ or type is TypeNCJ or type is TypeCR",
+]
+include = "type is TypeLD or type is TypeST or type is TypeALU32_2op or type is TypeALU32_3op or type is TypeALU32_ADDI or type is TypeALU64 or type is TypeS_2op or type is TypeS_3op or type is TypeM or type is TypeXTYPE"
+blocked_features = [
+    "UseAudio", "UseCompound", "UseCabac", "UseZReg",
+    "HasV81", "UseHVXV79", "UseHVXV81",
+    "UseHVXFloatingPoint", "UseHVXIEEEFP", "UseHVXQFloat",
+]
+skip_terms = [
+    "l2unlock", "l2lock", "l2fetch", "dcclean", "dcinv", "dczero", "dcfetch", "icinv", "syncht", "swi", "trap", "jump", "call", "dealloc",
+    "allocframe", "r29", "r30", "r31", "loop",
+    "nmi", "stop", "rte", "wait", ":deprecated",
+]

@@ -21,6 +21,10 @@ use crate::stats::Stats;
 pub struct ToolchainPaths {
     pub toolchain_root: PathBuf,
     pub qemu_path: PathBuf,
+    /// When set, this QEMU is the reference instead of hexagon-sim.
+    pub ref_qemu_path: Option<PathBuf>,
+    /// `-machine` passed to QEMU (both reference and test) when set.
+    pub machine: Option<String>,
     pub isa_version: String,
 }
 
@@ -39,6 +43,8 @@ impl ToolchainPaths {
 pub struct VerificationConfig {
     pub toolchain: ToolchainPaths,
     pub results_dir: PathBuf,
+    /// Keep artifacts of passing iterations.
+    pub keep_passing: bool,
     /// Maximum number of iterations. `None` means unlimited (run until deadline or Ctrl-C).
     pub max_iterations: Option<usize>,
     /// Deadline after which no new iterations start. `None` means no time limit.
@@ -207,38 +213,78 @@ fn run_single_iteration(
         return Ok(());
     }
 
-    // Run reference (hexagon-sim via hexagon-lldb)
-    let sim_script = generate_sim_script(&["steps", "test_end"]);
-    let sim_script_path = iter_dir.join("sim_debug.lldb");
-    std::fs::write(&sim_script_path, &sim_script)?;
+    // Run reference and test. Startup races under parallel load can yield an
+    // empty register dump on one side, so retry before calling it a mismatch.
+    let run_pair = || -> Result<(String, String)> {
+        // Run reference (hexagon-sim, or a reference QEMU if configured)
+        let ref_output = if let Some(ref_qemu) = &config.toolchain.ref_qemu_path {
+            let ref_port = find_free_port()?;
+            let ref_script = generate_qemu_script(&["steps", "test_end"], ref_port);
+            let ref_script_path = iter_dir.join("ref_debug.lldb");
+            std::fs::write(&ref_script_path, &ref_script)?;
+            run_on_qemu(
+                &config.toolchain.hexagon_lldb(),
+                ref_qemu,
+                config.toolchain.machine.as_deref(),
+                &ref_script_path,
+                &elf_path,
+                ref_port,
+            )?
+        } else {
+            let sim_script = generate_sim_script(&["steps", "test_end"]);
+            let sim_script_path = iter_dir.join("sim_debug.lldb");
+            std::fs::write(&sim_script_path, &sim_script)?;
+            run_on_sim(
+                &config.toolchain.hexagon_lldb(),
+                &sim_script_path,
+                &elf_path,
+            )?
+        };
 
-    let ref_output = run_on_sim(
-        &config.toolchain.hexagon_lldb(),
-        &sim_script_path,
-        &elf_path,
-    )?;
+        // Run test (QEMU via hexagon-lldb + gdb-remote)
+        let gdb_port = find_free_port()?;
+        let qemu_script = generate_qemu_script(&["steps", "test_end"], gdb_port);
+        let qemu_script_path = iter_dir.join("qemu_debug.lldb");
+        std::fs::write(&qemu_script_path, &qemu_script)?;
+
+        let test_output = run_on_qemu(
+            &config.toolchain.hexagon_lldb(),
+            &config.toolchain.qemu_path,
+            config.toolchain.machine.as_deref(),
+            &qemu_script_path,
+            &elf_path,
+            gdb_port,
+        )?;
+
+        Ok((ref_output, test_output))
+    };
+    let mut attempt = 0;
+    let (ref_output, test_output) = loop {
+        let (r, t) = run_pair()?;
+        attempt += 1;
+        let (rn, tn) = (parse_lldb_output(&r).len(), parse_lldb_output(&t).len());
+        if (rn > 0 && rn == tn) || attempt >= 3 {
+            break (r, t);
+        }
+    };
     std::fs::write(iter_dir.join("ref_output.txt"), &ref_output)?;
-
-    // Run test (QEMU via hexagon-lldb + gdb-remote)
-    let gdb_port = find_free_port()?;
-    let qemu_script = generate_qemu_script(&["steps", "test_end"], gdb_port);
-    let qemu_script_path = iter_dir.join("qemu_debug.lldb");
-    std::fs::write(&qemu_script_path, &qemu_script)?;
-
-    let test_output = run_on_qemu(
-        &config.toolchain.hexagon_lldb(),
-        &config.toolchain.qemu_path,
-        &qemu_script_path,
-        &elf_path,
-        gdb_port,
-    )?;
     std::fs::write(iter_dir.join("test_output.txt"), &test_output)?;
-
     // Parse and compare
     let ref_states = parse_lldb_output(&ref_output);
     let test_states = parse_lldb_output(&test_output);
 
     let mut any_mismatch = false;
+    // A silent harness failure (no register dumps, or differing stop counts)
+    // must not be reported as a pass.
+    if ref_states.is_empty() || ref_states.len() != test_states.len() {
+        eprintln!(
+            "MISMATCH in iteration {}: ref produced {} register dumps, test produced {}",
+            iteration,
+            ref_states.len(),
+            test_states.len()
+        );
+        any_mismatch = true;
+    }
     let min_len = ref_states.len().min(test_states.len());
     for i in 0..min_len {
         let result = compare_states(&ref_states[i], &test_states[i]);
@@ -277,7 +323,9 @@ fn run_single_iteration(
     } else {
         stats.record_success(recipe.num_packets, recipe.num_packets * 3);
         // Clean up passing iterations to save disk space
-        let _ = std::fs::remove_dir_all(&iter_dir);
+        if !config.keep_passing {
+            let _ = std::fs::remove_dir_all(&iter_dir);
+        }
     }
 
     Ok(())
@@ -354,12 +402,13 @@ pub fn run_on_sim(lldb: &Path, script: &Path, elf: &Path) -> Result<String> {
 pub fn run_on_qemu(
     lldb: &Path,
     qemu: &Path,
+    machine: Option<&str>,
     script: &Path,
     elf: &Path,
     gdb_port: u16,
 ) -> Result<String> {
     // Start QEMU in the background with GDB server
-    let mut qemu_proc = start_qemu(qemu, elf, gdb_port)?;
+    let mut qemu_proc = start_qemu(qemu, machine, elf, gdb_port)?;
 
     // Give QEMU a moment to start up
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -429,9 +478,12 @@ fn wait_with_timeout(child: &mut Child, timeout: std::time::Duration) -> Result<
 }
 
 /// Start QEMU in the background with GDB server.
-fn start_qemu(qemu: &Path, elf: &Path, gdb_port: u16) -> Result<Child> {
-    Command::new(qemu)
-        .arg("-kernel")
+fn start_qemu(qemu: &Path, machine: Option<&str>, elf: &Path, gdb_port: u16) -> Result<Child> {
+    let mut cmd = Command::new(qemu);
+    if let Some(m) = machine {
+        cmd.arg("-machine").arg(m);
+    }
+    cmd.arg("-kernel")
         .arg(elf)
         .arg("-gdb")
         .arg(format!("tcp::{}", gdb_port))

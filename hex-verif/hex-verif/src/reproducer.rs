@@ -194,12 +194,26 @@ fn try_reproduce(toolchain: &ToolchainPaths, work_dir: &Path, asm_content: &str)
         anyhow::bail!("Build failed");
     }
 
-    // Run on hexagon-sim (reference)
-    let sim_script = generate_sim_script(&["steps", "test_end"]);
-    let sim_script_path = work_dir.join("minimize_sim.lldb");
-    std::fs::write(&sim_script_path, &sim_script)?;
-
-    let ref_output = run_on_sim(&toolchain.hexagon_lldb(), &sim_script_path, &test_elf)?;
+    // Run on the reference (hexagon-sim, or a reference QEMU if configured)
+    let ref_output = if let Some(ref_qemu) = &toolchain.ref_qemu_path {
+        let ref_port = find_free_port()?;
+        let ref_script = generate_qemu_script(&["steps", "test_end"], ref_port);
+        let ref_script_path = work_dir.join("minimize_ref.lldb");
+        std::fs::write(&ref_script_path, &ref_script)?;
+        run_on_qemu(
+            &toolchain.hexagon_lldb(),
+            ref_qemu,
+            toolchain.machine.as_deref(),
+            &ref_script_path,
+            &test_elf,
+            ref_port,
+        )?
+    } else {
+        let sim_script = generate_sim_script(&["steps", "test_end"]);
+        let sim_script_path = work_dir.join("minimize_sim.lldb");
+        std::fs::write(&sim_script_path, &sim_script)?;
+        run_on_sim(&toolchain.hexagon_lldb(), &sim_script_path, &test_elf)?
+    };
 
     // Run on QEMU (test)
     let gdb_port = find_free_port()?;
@@ -210,6 +224,7 @@ fn try_reproduce(toolchain: &ToolchainPaths, work_dir: &Path, asm_content: &str)
     let test_output = run_on_qemu(
         &toolchain.hexagon_lldb(),
         &toolchain.qemu_path,
+        toolchain.machine.as_deref(),
         &qemu_script_path,
         &test_elf,
         gdb_port,

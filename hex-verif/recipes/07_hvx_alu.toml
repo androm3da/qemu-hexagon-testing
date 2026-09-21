@@ -28,8 +28,8 @@ blocked_features = [
 skip_terms = [
     "mem", "swi", "trap", "jump", "call", "dealloc",
     "allocframe", "r29", "r30", "r31", "loop",
-    "nmi", "stop", "rte", "wait",
-    "scatter", "gather", ":raw", ".new",
+    "nmi", "stop", "rte", "wait", ":deprecated",
+    "_rtt", "vmpahhsat", "vmpauhuhsat", "vmpsuhuhsat", "scatter", "gather", ":raw", ".new",
     "vhist", "vwhist", "vshuff", "vdeal", "vcombine",
     "cmpyiw", "cmpyrw",
 ]

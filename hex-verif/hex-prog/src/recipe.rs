@@ -213,6 +213,9 @@ pub struct SynthSettings {
     /// Auto-increment (`++`), register-offset (`<<`), and HVX memory
     /// operations are excluded for safety.
     pub allow_mem_ops: bool,
+    /// Insert forward-only direct jumps, predicated jumps and compound
+    /// compare-jumps between synthesized packets (always terminates).
+    pub allow_control_flow: bool,
 }
 
 impl Default for Recipe {
@@ -271,6 +274,7 @@ impl Default for SynthSettings {
             allow_predicated_new: false,
             allow_new_value: false,
             allow_mem_ops: false,
+            allow_control_flow: false,
         }
     }
 }
