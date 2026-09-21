@@ -1,0 +1,4 @@
+MISMATCH: 3 register(s) differ:
+  r20 : ref=0xffff0000 test=0xffffffc7
+  p3_0 : ref=0xffffffff test=0xff00ffff
+  p2 : ref=0xff test=0x00

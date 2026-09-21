@@ -1,0 +1,13 @@
+MISMATCH: 12 register(s) differ:
+  r02 : ref=0xde804bb7 test=0x00000001
+  r04 : ref=0xf7e78100 test=0xf7e5ffbc
+  r07 : ref=0x00000000 test=0x7e5a0000
+  r09 : ref=0xd005eec0 test=0x00000045
+  r10 : ref=0xe1454022 test=0xdeded7b1
+  r14 : ref=0xf6667fb9 test=0x0000217f
+  r16 : ref=0xf7937fff test=0x012d7fff
+  r18 : ref=0xe40a8044 test=0xdf3daf61
+  r20 : ref=0x00000000 test=0xffffffbc
+  r21 : ref=0x00000000 test=0xffffffbc
+  p3_0 : ref=0x00c0ffff test=0x00c3ffff
+  p2 : ref=0xc0 test=0xc3

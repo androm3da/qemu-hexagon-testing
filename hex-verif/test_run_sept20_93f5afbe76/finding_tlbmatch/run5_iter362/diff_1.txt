@@ -1,0 +1,3 @@
+MISMATCH: 2 register(s) differ:
+  p3_0 : ref=0x00fffff0 test=0x0000fff0
+  p2 : ref=0xff test=0x00

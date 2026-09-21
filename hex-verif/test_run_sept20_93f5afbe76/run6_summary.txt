@@ -1,0 +1,5 @@
+13_hvx_memory: Passed: 300 Build failures: 0 Mismatches: 0 
+14_hw_loops: Passed: 300 Build failures: 0 Mismatches: 0 
+15_sw_loops_calls: Passed: 299 Build failures: 1 Mismatches: 0 
+16_scalar_kitchen_sink: Passed: 300 Build failures: 0 Mismatches: 0 
+17_hvx_kitchen_sink: Passed: 300 Build failures: 0 Mismatches: 0 
