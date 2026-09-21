@@ -37,12 +37,14 @@ pub struct CfOptions {
     pub hw_loops: bool,
     pub sw_loops: bool,
     pub calls: bool,
+    /// HVX gather/scatter blocks operating on the machine's VTCM.
+    pub hvx_gather_scatter: bool,
 }
 
 impl CfOptions {
     /// True if any construct is enabled.
     pub fn any(&self) -> bool {
-        self.forward || self.hw_loops || self.sw_loops || self.calls
+        self.forward || self.hw_loops || self.sw_loops || self.calls || self.hvx_gather_scatter
     }
 }
 
@@ -205,6 +207,15 @@ pub fn apply(
         }
     }
 
+    // HVX gather/scatter blocks (one self-contained line each).
+    if opts.hvx_gather_scatter {
+        for i in LEADING_PACKETS..n.saturating_sub(1) {
+            if !in_loop[i] && rng.gen_range(0..10) == 0 {
+                deco.post[i].push(gather_scatter_block(rng));
+            }
+        }
+    }
+
     // Render.
     let mut body = Vec::with_capacity(n * 2);
     for i in 0..=n {
@@ -222,6 +233,96 @@ pub fn apply(
         }
     }
     CfOutput { body, functions }
+}
+
+/// Base address of VTCM on the Hexagon machines under test (`V81QA_1`).
+const VTCM_BASE: u32 = 0xd900_0000;
+
+/// One self-contained HVX gather or scatter block on a single line.
+///
+/// Gather/scatter fault (exception 0x26) unless the base is in VTCM, so the
+/// block seeds eight vectors of VTCM, masks the offset vector(s) into that
+/// 1 KiB window, sets `m0`/`m1` to the window's last byte offset, runs the
+/// operation and reads the affected memory back into vector registers.
+/// Scratch registers: r6, r7, v28--v31, m0/m1.
+fn gather_scatter_block(rng: &mut StdRng) -> String {
+    // (name, offset-vector kind, mask for the offset lanes)
+    // kinds: 0 = halfword offsets, 1 = word offsets, 2 = word offsets in a pair
+    let scatter = rng.gen_bool(0.5);
+    let kind = rng.gen_range(0..3usize);
+    let (mask, off_reg, elem) = match kind {
+        0 => (0x03fe_03fe_u32, "v30.h", "h"),
+        1 => (0x0000_03fc, "v30.w", "w"),
+        _ => (0x0000_03fe, "v29:28.w", "h"),
+    };
+    let m = if rng.gen_bool(0.5) { "m0" } else { "m1" };
+    let pred = if rng.gen_bool(0.3) {
+        // `if (qN)` forms exist for the non-accumulating operations only.
+        Some(rng.gen_range(0..4))
+    } else {
+        None
+    };
+    let src = rng.gen_range(0..28);
+    let data = rng.gen_range(0..28);
+
+    let mut pk: Vec<String> = vec![
+        format!("r6 = ##{:#x}", VTCM_BASE),
+        format!("r7 = ##{:#x}", mask),
+        "v31 = vsplat(r7)".to_string(),
+    ];
+    if kind == 2 {
+        pk.push(format!("v28 = vand(v{},v31)", src));
+        pk.push(format!("v29 = vand(v{},v31)", (src + 1) % 28));
+    } else {
+        pk.push(format!("v30 = vand(v{},v31)", src));
+    }
+    pk.push("r7 = #1023".to_string());
+    pk.push(format!("{} = r7", m));
+    for slot in 0..8 {
+        pk.push(format!("vmem(r6+#{}) = v{}", slot, rng.gen_range(0..28)));
+    }
+
+    let mut tail: Vec<String> = Vec::new();
+    if scatter {
+        let acc = pred.is_none() && rng.gen_bool(0.4);
+        let op = if acc { "+=" } else { "=" };
+        let q = pred.map(|q| format!("if (q{}) ", q)).unwrap_or_default();
+        let sc = match kind {
+            2 => format!("{}vscatter(r6,{},{}).h {} v{}", q, m, off_reg, op, data),
+            _ => format!(
+                "{}vscatter(r6,{},{}).{} {} v{}",
+                q, m, off_reg, elem, op, data
+            ),
+        };
+        pk.push(sc);
+        pk.push("vmem(r6+#0):scatter_release".to_string());
+        for _ in 0..2 {
+            tail.push(format!(
+                "v{} = vmem(r6+#{})",
+                rng.gen_range(0..28),
+                rng.gen_range(0..8)
+            ));
+        }
+    } else {
+        let q = pred.map(|q| format!("if (q{}) ", q)).unwrap_or_default();
+        let slot = rng.gen_range(0..8);
+        // The gather and its `vtmp.new` consumer share a packet.
+        let ty = match kind {
+            0 => "h",
+            1 => "w",
+            _ => "h",
+        };
+        pk.push(format!(
+            "{}vtmp.{} = vgather(r6,{},{}).{} ; vmem(r6+#{}) = vtmp.new",
+            q, ty, m, off_reg, elem, slot
+        ));
+        tail.push(format!("v{} = vmem(r6+#{})", rng.gen_range(0..28), slot));
+    }
+    pk.extend(tail);
+    pk.iter()
+        .map(|p| format!("{{ {} }}", p))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A single forward branch (jump, predicated jump or compound cmp-jump).
@@ -361,6 +462,7 @@ mod tests {
             hw_loops: true,
             sw_loops: true,
             calls: true,
+            hvx_gather_scatter: false,
         }
     }
 

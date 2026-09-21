@@ -169,6 +169,8 @@ pub struct SynthesisConfig {
     pub allow_sw_loops: Option<bool>,
     /// Insert calls to generated leaf functions (default: `false`).
     pub allow_calls: Option<bool>,
+    /// Insert HVX gather/scatter blocks on VTCM (default: `false`).
+    pub allow_hvx_gather_scatter: Option<bool>,
     /// `[synthesis.compiler]` -- compiler-related flags.
     pub compiler: Option<CompilerConfig>,
 }
@@ -293,6 +295,11 @@ impl RecipeFile {
                 .as_ref()
                 .and_then(|s| s.allow_calls)
                 .unwrap_or(synth_defaults.allow_calls),
+            allow_hvx_gather_scatter: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_hvx_gather_scatter)
+                .unwrap_or(synth_defaults.allow_hvx_gather_scatter),
         };
 
         // Compiler/HVX setting

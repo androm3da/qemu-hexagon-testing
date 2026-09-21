@@ -227,6 +227,8 @@ pub struct SynthSettings {
     /// Insert calls (`call`, `callr`, predicated forms) to generated leaf
     /// functions that return via `jumpr r31` or `dealloc_return`.
     pub allow_calls: bool,
+    /// Insert HVX gather/scatter blocks that operate on VTCM.
+    pub allow_hvx_gather_scatter: bool,
 }
 
 impl Default for Recipe {
@@ -290,6 +292,7 @@ impl Default for SynthSettings {
             allow_hw_loops: false,
             allow_sw_loops: false,
             allow_calls: false,
+            allow_hvx_gather_scatter: false,
         }
     }
 }

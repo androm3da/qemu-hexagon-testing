@@ -270,6 +270,7 @@ impl<'a> ProgramGenerator<'a> {
             hw_loops: recipe.synth.allow_hw_loops,
             sw_loops: recipe.synth.allow_sw_loops,
             calls: recipe.synth.allow_calls,
+            hvx_gather_scatter: recipe.hvx && recipe.synth.allow_hvx_gather_scatter,
         };
         let mut functions = Vec::new();
         if cf.any() {
