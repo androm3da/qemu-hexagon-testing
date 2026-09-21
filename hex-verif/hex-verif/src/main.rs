@@ -158,6 +158,19 @@ struct Cli {
     )]
     qemu: PathBuf,
 
+    /// Keep artifacts of passing iterations too.
+    #[arg(long)]
+    keep_passing: bool,
+
+    /// Use this QEMU binary as the reference instead of hexagon-sim.
+    #[arg(long)]
+    ref_qemu: Option<PathBuf>,
+
+    /// QEMU machine (-machine) passed to both QEMU binaries. Defaults differ
+    /// between QEMU builds, so set this for a fair comparison.
+    #[arg(long)]
+    machine: Option<String>,
+
     /// ISA version (e.g., v73).
     #[arg(long, default_value = "v73")]
     isa_version: String,
@@ -248,9 +261,12 @@ fn main() -> Result<()> {
         toolchain: ToolchainPaths {
             toolchain_root: cli.toolchain,
             qemu_path: cli.qemu,
+            ref_qemu_path: cli.ref_qemu,
+            machine: cli.machine,
             isa_version: cli.isa_version,
         },
         results_dir,
+        keep_passing: cli.keep_passing,
         max_iterations,
         deadline,
         packets_per_test: cli.packets,

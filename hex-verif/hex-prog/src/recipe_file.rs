@@ -159,6 +159,8 @@ pub struct SynthesisConfig {
     /// with the base register forced to r27 and offsets constrained to
     /// stay within the memory region.
     pub allow_mem_ops: Option<bool>,
+    /// Insert forward-only jumps/branches between packets (default: `false`).
+    pub allow_control_flow: Option<bool>,
     /// `[synthesis.compiler]` -- compiler-related flags.
     pub compiler: Option<CompilerConfig>,
 }
@@ -258,6 +260,11 @@ impl RecipeFile {
                 .as_ref()
                 .and_then(|s| s.allow_mem_ops)
                 .unwrap_or(synth_defaults.allow_mem_ops),
+            allow_control_flow: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_control_flow)
+                .unwrap_or(synth_defaults.allow_control_flow),
         };
 
         // Compiler/HVX setting

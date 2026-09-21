@@ -1,10 +1,11 @@
-# Predicated instructions (conditional execution)
+# Scalar ALU + forward jumps, predicated jumps, compound cmp-jumps
 [generation]
 num_packets = 50
 num_iterations = 3
 
 [synthesis]
 max_packet_size = 4
+allow_control_flow = true
 
 [filters]
 exclude = [
@@ -12,12 +13,11 @@ exclude = [
     "is call or is return",
     "has side_effects",
     "is predicated_new",
-    "is nv_store",
     "is cvi",
     "may load or may store",
     "type is TypeJ or type is TypeCJ or type is TypeNCJ or type is TypeCR",
 ]
-include = "is predicated"
+include = "type is TypeALU32_2op or type is TypeALU32_3op or type is TypeALU32_ADDI or type is TypeALU64"
 blocked_features = [
     "UseAudio", "UseCompound", "UseCabac", "UseZReg",
     "HasV81", "UseHVXV79", "UseHVXV81",
@@ -27,7 +27,4 @@ skip_terms = [
     "mem", "swi", "trap", "jump", "call", "dealloc",
     "allocframe", "r29", "r30", "r31", "loop",
     "nmi", "stop", "rte", "wait", ":deprecated",
-    "scatter", "gather", ".new",
-    "dfmake", "sfmake", "convert", "decbin",
-    "cmpyiw", "cmpyrw",
 ]

@@ -210,7 +210,7 @@ impl<'a> ProgramGenerator<'a> {
         let candidate_names: Vec<String> =
             synth.candidates().iter().map(|c| c.name.clone()).collect();
 
-        let mut packets = Vec::with_capacity(recipe.num_packets);
+        let mut packets: Vec<String> = Vec::with_capacity(recipe.num_packets);
         let mut instructions = Vec::new();
 
         for _ in 0..recipe.num_packets {
@@ -225,8 +225,94 @@ impl<'a> ProgramGenerator<'a> {
             }
         }
 
+        if recipe.synth.allow_control_flow {
+            packets = insert_control_flow(packets, rng);
+        }
+
         Ok((packets, instructions, candidate_names))
     }
+}
+
+/// Number of leading packets left branch-free. The `steps` breakpoint is
+/// placed after the prologue, so an early branch could skip it.
+const CF_LEADING_PACKETS: usize = 4;
+
+/// Add forward-only control flow to a packet list.
+///
+/// Branches only target labels placed 1--4 packets later, so programs
+/// always terminate. Labels are emitted on their own lines so that packet
+/// minimization (which removes only `{ ... }` lines) keeps them valid.
+///
+/// Three shapes are produced: `jump`, predicated `if ([!]pN) jump:[t|nt]`,
+/// and compound compare-jumps `{ pN = cmp.xx(..); if (pN.new) jump }`.
+/// Branches are appended to short packets or emitted as their own packet.
+fn insert_control_flow(packets: Vec<String>, rng: &mut StdRng) -> Vec<String> {
+    let n = packets.len();
+    let mut labels_before: Vec<Vec<String>> = vec![Vec::new(); n + 1];
+    let mut result_pkts = packets;
+    let mut standalone: Vec<Option<String>> = vec![None; n];
+
+    for i in CF_LEADING_PACKETS..n.saturating_sub(1) {
+        if rng.gen_range(0..4) != 0 {
+            continue;
+        }
+        let tgt = (i + 1 + rng.gen_range(1..=4usize)).min(n);
+        let label = format!(".Lcf_{}", i);
+        labels_before[tgt].push(label.clone());
+
+        let hint = if rng.gen_bool(0.5) { "t" } else { "nt" };
+        let neg = if rng.gen_bool(0.5) { "!" } else { "" };
+        let branch = match rng.gen_range(0..6) {
+            0 => format!("jump {}", label),
+            1 | 2 => format!(
+                "if ({}p{}) jump:{} {}",
+                neg,
+                rng.gen_range(0..4),
+                hint,
+                label
+            ),
+            _ => {
+                let (p, a) = (rng.gen_range(0..2), rng.gen_range(0..27));
+                let op = ["eq", "gt", "gtu"][rng.gen_range(0..3usize)];
+                let rhs = if rng.gen_bool(0.5) {
+                    format!("r{}", rng.gen_range(0..27))
+                } else {
+                    format!("#{}", rng.gen_range(0..32))
+                };
+                format!("p{p} = cmp.{op}(r{a},{rhs}) ; if ({neg}p{p}.new) jump:{hint} {label}")
+            }
+        };
+
+        // Compound compare-jumps and busy packets get their own packet;
+        // short plain-ALU packets absorb a simple branch.
+        let pkt = &result_pkts[i];
+        let slots = pkt.matches(';').count() + 1;
+        let plain = !(pkt.contains("mem") || pkt.contains(".new") || pkt.contains(" v"));
+        if branch.contains(".new") || slots > 2 || !plain {
+            standalone[i] = Some(format!("{{ {} }}", branch));
+        } else {
+            let body = pkt
+                .trim()
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .trim();
+            result_pkts[i] = format!("{{ {} ; {} }}", body, branch);
+        }
+    }
+
+    let mut out = Vec::with_capacity(n * 2);
+    for i in 0..=n {
+        for l in &labels_before[i] {
+            out.push(format!("{}:", l));
+        }
+        if i < n {
+            out.push(result_pkts[i].clone());
+            if let Some(b) = standalone[i].take() {
+                out.push(b);
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
