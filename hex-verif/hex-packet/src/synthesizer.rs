@@ -66,6 +66,14 @@ pub struct SynthConfig {
     /// When true, the synthesizer forces the base register to r27 and
     /// constrains offsets to `[0, mem_region_size - access_size]`.
     pub allow_mem_ops: bool,
+    /// Allow HVX `vmem`/`vmemu` base+immediate loads and stores.
+    ///
+    /// The base register is forced to r26 (which points into the middle of
+    /// `hvx_mem_region`, so the s4 vector-scaled offset stays in bounds).
+    pub allow_hvx_mem_ops: bool,
+    /// Additional integer registers that must never be a destination
+    /// (e.g. a software-loop counter).
+    pub extra_reserved_regs: Vec<usize>,
     /// Size of the memory region in bytes (used to constrain offsets).
     pub mem_region_size: usize,
 }
@@ -83,6 +91,8 @@ impl Default for SynthConfig {
             include_filter: None,
             blocked_features: Vec::new(),
             allow_mem_ops: false,
+            allow_hvx_mem_ops: false,
+            extra_reserved_regs: Vec::new(),
             mem_region_size: 65536,
         }
     }
@@ -160,6 +170,18 @@ impl<'a> PacketSynthesizer<'a> {
         // Sort for deterministic iteration
         result.sort_by(|a, b| a.name.cmp(&b.name));
         result
+    }
+
+    /// Integer registers that may not be written by synthesized instructions.
+    fn reserved_regs(&self) -> Vec<usize> {
+        let mut r = self.config.extra_reserved_regs.clone();
+        if self.config.allow_mem_ops || self.config.allow_hvx_mem_ops {
+            r.push(27);
+        }
+        if self.config.allow_hvx_mem_ops {
+            r.push(26);
+        }
+        r
     }
 
     /// Access the candidate list (for external filtering).
@@ -343,8 +365,13 @@ impl<'a> PacketSynthesizer<'a> {
         let mut immediates = Vec::new();
         let mut asm = insn.asm_syntax.clone();
 
-        let is_mem_op = self.config.allow_mem_ops && (insn.may_load || insn.may_store);
-        let access_size = if is_mem_op {
+        let touches_mem = insn.may_load || insn.may_store;
+        let is_hvx_mem = self.config.allow_hvx_mem_ops && insn.is_cvi && touches_mem;
+        let is_scalar_mem = self.config.allow_mem_ops && !insn.is_cvi && touches_mem;
+        let is_mem_op = is_scalar_mem || is_hvx_mem;
+        let base_name = if is_hvx_mem { "r26" } else { "r27" };
+        let reserved = self.reserved_regs();
+        let access_size = if is_scalar_mem {
             mem_access_size(&insn.asm_syntax)
         } else {
             0
@@ -366,14 +393,12 @@ impl<'a> PacketSynthesizer<'a> {
                     return None;
                 }
 
-                // When mem ops are enabled, protect r27 from being overwritten.
-                // For IntRegs, exclude index 27 (r27).
-                // For DoubleRegs, exclude index 13 (r27:26).
-                if self.config.allow_mem_ops {
+                // Protect reserved registers (memory bases, loop counters).
+                if !reserved.is_empty() {
                     if rc == RegisterClass::IntRegs {
-                        safe.retain(|&idx| idx != 27);
+                        safe.retain(|idx| !reserved.contains(idx));
                     } else if rc == RegisterClass::DoubleRegs {
-                        safe.retain(|&idx| idx != 13);
+                        safe.retain(|idx| !reserved.iter().any(|r| r / 2 == *idx));
                     }
                     if safe.is_empty() {
                         return None;
@@ -400,7 +425,7 @@ impl<'a> PacketSynthesizer<'a> {
         // Assign input operands
         for op in &insn.ins {
             if op.is_immediate {
-                let imm = if is_mem_op && !mem_offset_assigned {
+                let imm = if is_scalar_mem && !mem_offset_assigned {
                     // First immediate of a memory op: constrain offset
                     mem_offset_assigned = true;
                     self.pick_mem_offset(rng, insn, op.imm_type.as_deref(), access_size)
@@ -426,7 +451,7 @@ impl<'a> PacketSynthesizer<'a> {
                 // For memory ops, force the first IntRegs source to r27 (base register)
                 if is_mem_op && rc == RegisterClass::IntRegs && !base_reg_assigned {
                     base_reg_assigned = true;
-                    let name = "r27".to_string();
+                    let name = base_name.to_string();
                     asm = asm.replace(&format!("${}", op.name), &name);
                     src_regs.push(name);
                     continue;

@@ -41,6 +41,8 @@ fn test_synthesize_1000_packets_all_valid() {
         include_filter: recipe.filters.include.clone(),
         blocked_features: recipe.filters.blocked_features.clone(),
         allow_mem_ops: false,
+        allow_hvx_mem_ops: false,
+        extra_reserved_regs: Vec::new(),
         mem_region_size: 65536,
     };
 
@@ -106,6 +108,8 @@ fn test_synthesize_deterministic_with_real_db() {
         include_filter: recipe.filters.include.clone(),
         blocked_features: recipe.filters.blocked_features.clone(),
         allow_mem_ops: false,
+        allow_hvx_mem_ops: false,
+        extra_reserved_regs: Vec::new(),
         mem_region_size: 65536,
     };
     let config2 = SynthConfig {
@@ -119,6 +123,8 @@ fn test_synthesize_deterministic_with_real_db() {
         include_filter: recipe.filters.include.clone(),
         blocked_features: recipe.filters.blocked_features.clone(),
         allow_mem_ops: false,
+        allow_hvx_mem_ops: false,
+        extra_reserved_regs: Vec::new(),
         mem_region_size: 65536,
     };
 

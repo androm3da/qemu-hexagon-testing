@@ -161,6 +161,14 @@ pub struct SynthesisConfig {
     pub allow_mem_ops: Option<bool>,
     /// Insert forward-only jumps/branches between packets (default: `false`).
     pub allow_control_flow: Option<bool>,
+    /// Allow HVX vmem/vmemu loads and stores (default: `false`).
+    pub allow_hvx_mem_ops: Option<bool>,
+    /// Wrap packet runs in hardware loops (default: `false`).
+    pub allow_hw_loops: Option<bool>,
+    /// Wrap packet runs in software backward-branch loops (default: `false`).
+    pub allow_sw_loops: Option<bool>,
+    /// Insert calls to generated leaf functions (default: `false`).
+    pub allow_calls: Option<bool>,
     /// `[synthesis.compiler]` -- compiler-related flags.
     pub compiler: Option<CompilerConfig>,
 }
@@ -265,6 +273,26 @@ impl RecipeFile {
                 .as_ref()
                 .and_then(|s| s.allow_control_flow)
                 .unwrap_or(synth_defaults.allow_control_flow),
+            allow_hvx_mem_ops: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_hvx_mem_ops)
+                .unwrap_or(synth_defaults.allow_hvx_mem_ops),
+            allow_hw_loops: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_hw_loops)
+                .unwrap_or(synth_defaults.allow_hw_loops),
+            allow_sw_loops: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_sw_loops)
+                .unwrap_or(synth_defaults.allow_sw_loops),
+            allow_calls: self
+                .synthesis
+                .as_ref()
+                .and_then(|s| s.allow_calls)
+                .unwrap_or(synth_defaults.allow_calls),
         };
 
         // Compiler/HVX setting

@@ -91,6 +91,7 @@
 //! };
 //! ```
 
+pub mod control_flow;
 pub mod recipe;
 pub mod recipe_file;
 pub mod skip_list;

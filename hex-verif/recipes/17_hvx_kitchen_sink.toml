@@ -1,0 +1,39 @@
+# HVX: ALU + vmem + all control flow (forward, hw loops, sw loops, calls)
+[generation]
+num_packets = 80
+num_iterations = 3
+
+[synthesis]
+max_packet_size = 4
+allow_hvx_mem_ops = true
+allow_control_flow = true
+allow_hw_loops = true
+allow_sw_loops = true
+allow_calls = true
+max_cvi_per_packet = 1
+
+[synthesis.compiler]
+hvx = true
+
+[filters]
+exclude = [
+    "is solo",
+    "is call or is return",
+    "has side_effects",
+    "is predicated_new",
+    "type is TypeJ or type is TypeCJ or type is TypeNCJ or type is TypeCR",
+]
+include = "is cvi"
+blocked_features = [
+    "UseAudio", "UseCompound", "UseCabac", "UseZReg",
+    "HasV81", "UseHVXV79", "UseHVXV81",
+    "UseHVXFloatingPoint", "UseHVXIEEEFP", "UseHVXQFloat",
+]
+skip_terms = [
+    "mem", "swi", "trap", "jump", "call", "dealloc",
+    "allocframe", "r29", "r30", "r31", "loop",
+    "nmi", "stop", "rte", "wait", ":deprecated",
+    "_rtt", "vmpahhsat", "vmpauhuhsat", "vmpsuhuhsat", "scatter", "gather", ":raw", ".new",
+    "vhist", "vwhist", "vshuff", "vdeal", "vcombine",
+    "cmpyiw", "cmpyrw",
+]

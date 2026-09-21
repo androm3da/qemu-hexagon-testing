@@ -216,6 +216,17 @@ pub struct SynthSettings {
     /// Insert forward-only direct jumps, predicated jumps and compound
     /// compare-jumps between synthesized packets (always terminates).
     pub allow_control_flow: bool,
+    /// Allow HVX `vmem`/`vmemu` loads and stores (base r26 -> `hvx_mem_region`).
+    pub allow_hvx_mem_ops: bool,
+    /// Wrap short runs of packets in hardware loops (`loop0`/`loop1`,
+    /// including nested loops and `:endloop01`).
+    pub allow_hw_loops: bool,
+    /// Wrap short runs of packets in software backward-branch loops
+    /// (reserves r25 as the loop counter).
+    pub allow_sw_loops: bool,
+    /// Insert calls (`call`, `callr`, predicated forms) to generated leaf
+    /// functions that return via `jumpr r31` or `dealloc_return`.
+    pub allow_calls: bool,
 }
 
 impl Default for Recipe {
@@ -275,6 +286,10 @@ impl Default for SynthSettings {
             allow_new_value: false,
             allow_mem_ops: false,
             allow_control_flow: false,
+            allow_hvx_mem_ops: false,
+            allow_hw_loops: false,
+            allow_sw_loops: false,
+            allow_calls: false,
         }
     }
 }

@@ -137,7 +137,13 @@ fn extract_step_packet_indices(asm: &str) -> Vec<usize> {
             break;
         }
 
-        if in_steps && trimmed.starts_with('{') && trimmed.ends_with('}') {
+        // Loop setup/end, frame management and loop counters are structure,
+        // not removable content.
+        if in_steps
+            && trimmed.starts_with('{')
+            && trimmed.ends_with('}')
+            && !hex_prog::control_flow::is_structural(trimmed)
+        {
             indices.push(i);
         }
     }

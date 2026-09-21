@@ -7,6 +7,7 @@ use rand::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use crate::control_flow::{self, CfOptions};
 use crate::recipe::Recipe;
 
 /// Values that exercise boundary conditions: sign extension edges, carry
@@ -56,7 +57,10 @@ struct TestProgramTemplate<'a> {
     init_regs: Vec<InitReg>,
     num_iterations: usize,
     hvx: bool,
+    hvx_mem: bool,
+    framed: bool,
     packets: &'a [String],
+    functions: &'a [String],
 }
 
 /// Generate initial values for `count` registers using a mix of interesting
@@ -117,14 +121,18 @@ impl<'a> ProgramGenerator<'a> {
         let init_regs = gen_init_values(&mut rng, 28);
 
         // Synthesize packets and collect metadata
-        let (packets, instructions, candidate_names) = self.synthesize_packets(recipe, &mut rng)?;
+        let (packets, functions, instructions, candidate_names) =
+            self.synthesize_packets(recipe, &mut rng)?;
 
         // Render the assembly template
         let template = TestProgramTemplate {
             init_regs,
             num_iterations: recipe.num_iterations,
             hvx: recipe.hvx,
+            hvx_mem: recipe.hvx && recipe.synth.allow_hvx_mem_ops,
+            framed: recipe.synth.allow_calls,
             packets: &packets,
+            functions: &functions,
         };
 
         let assembly = template
@@ -145,43 +153,69 @@ impl<'a> ProgramGenerator<'a> {
         &self,
         recipe: &Recipe,
         rng: &mut StdRng,
-    ) -> Result<(Vec<String>, Vec<GeneratedInstruction>, Vec<String>)> {
-        // Build skip_terms and exclude_filters: when mem ops are enabled,
-        // remove "mem" from skip terms but only allow safe base+offset IO
-        // forms (names ending in _io). Block all other memory patterns.
-        let (skip_terms, exclude_filters) = if recipe.synth.allow_mem_ops {
-            let terms: Vec<String> = recipe
+    ) -> Result<(
+        Vec<String>,
+        Vec<String>,
+        Vec<GeneratedInstruction>,
+        Vec<String>,
+    )> {
+        // Build skip_terms and exclude_filters. When any memory class is
+        // enabled, remove "mem" from skip terms and instead whitelist only
+        // safe base+offset forms by excluding everything else.
+        let synth = &recipe.synth;
+        let any_mem = synth.allow_mem_ops || synth.allow_hvx_mem_ops;
+        let skip_terms: Vec<String> = if any_mem {
+            recipe
                 .filters
                 .skip_terms
                 .iter()
                 .filter(|t| t.to_lowercase() != "mem")
                 .cloned()
-                .collect();
-
-            // Start with recipe's exclude filters, then add filters that
-            // only allow simple load/store _io forms. This excludes:
-            // absolute-addressed loads/stores, auto-increment, register-offset,
-            // memops (read-modify-write), scatter/gather, etc.
-            let mut excludes = recipe.filters.exclude.clone();
-            // Exclude all memory ops that don't have "_io" in their name
-            excludes.push(Filter::And(vec![
-                Filter::Or(vec![
-                    Filter::ByAttribute(AttributeFilter::MayLoad(true)),
-                    Filter::ByAttribute(AttributeFilter::MayStore(true)),
-                ]),
-                Filter::Not(Box::new(Filter::ByNameContains("_io".to_string()))),
-            ]));
-            // Exclude read-modify-write memops (even _io ones) — they have
-            // two immediates, count as stores, and complicate operand assignment
-            excludes.push(Filter::ByNameContains("memop".to_string()));
-
-            (terms, excludes)
+                .collect()
         } else {
-            (
-                recipe.filters.skip_terms.clone(),
-                recipe.filters.exclude.clone(),
-            )
+            recipe.filters.skip_terms.clone()
         };
+        let mut exclude_filters = recipe.filters.exclude.clone();
+        let is_cvi = || Filter::ByAttribute(AttributeFilter::IsCvi(true));
+        let touches_mem = || {
+            Filter::Or(vec![
+                Filter::ByAttribute(AttributeFilter::MayLoad(true)),
+                Filter::ByAttribute(AttributeFilter::MayStore(true)),
+            ])
+        };
+        let name = |s: &str| Filter::ByNameContains(s.to_string());
+        if any_mem {
+            // Scalar memory: only when enabled, and only `_io` forms. This
+            // excludes absolute, auto-increment, register-offset, memops
+            // (read-modify-write) and locked/cache operations.
+            let scalar_mem = Filter::And(vec![Filter::Not(Box::new(is_cvi())), touches_mem()]);
+            if synth.allow_mem_ops {
+                exclude_filters.push(Filter::And(vec![
+                    scalar_mem,
+                    Filter::Or(vec![Filter::Not(Box::new(name("_io"))), name("memop")]),
+                ]));
+            } else {
+                exclude_filters.push(scalar_mem);
+            }
+            // HVX memory: only when enabled, and only base+immediate forms
+            // that neither produce/consume temporaries nor scatter/gather.
+            let hvx_mem = Filter::And(vec![is_cvi(), touches_mem()]);
+            if synth.allow_hvx_mem_ops {
+                exclude_filters.push(Filter::And(vec![
+                    hvx_mem,
+                    Filter::Or(vec![
+                        Filter::Not(Box::new(name("_ai"))),
+                        name("cur"),
+                        name("tmp"),
+                        name("scatter"),
+                        name("gather"),
+                        name("new"),
+                    ]),
+                ]));
+            } else {
+                exclude_filters.push(hvx_mem);
+            }
+        }
 
         let config = SynthConfig {
             max_packet_size: recipe.synth.max_packet_size,
@@ -198,6 +232,12 @@ impl<'a> ProgramGenerator<'a> {
             include_filter: recipe.filters.include.clone(),
             blocked_features: recipe.filters.blocked_features.clone(),
             allow_mem_ops: recipe.synth.allow_mem_ops,
+            allow_hvx_mem_ops: recipe.synth.allow_hvx_mem_ops,
+            extra_reserved_regs: if recipe.synth.allow_sw_loops {
+                vec![control_flow::SW_LOOP_COUNTER]
+            } else {
+                Vec::new()
+            },
             mem_region_size: 65536,
         };
 
@@ -225,94 +265,23 @@ impl<'a> ProgramGenerator<'a> {
             }
         }
 
-        if recipe.synth.allow_control_flow {
-            packets = insert_control_flow(packets, rng);
-        }
-
-        Ok((packets, instructions, candidate_names))
-    }
-}
-
-/// Number of leading packets left branch-free. The `steps` breakpoint is
-/// placed after the prologue, so an early branch could skip it.
-const CF_LEADING_PACKETS: usize = 4;
-
-/// Add forward-only control flow to a packet list.
-///
-/// Branches only target labels placed 1--4 packets later, so programs
-/// always terminate. Labels are emitted on their own lines so that packet
-/// minimization (which removes only `{ ... }` lines) keeps them valid.
-///
-/// Three shapes are produced: `jump`, predicated `if ([!]pN) jump:[t|nt]`,
-/// and compound compare-jumps `{ pN = cmp.xx(..); if (pN.new) jump }`.
-/// Branches are appended to short packets or emitted as their own packet.
-fn insert_control_flow(packets: Vec<String>, rng: &mut StdRng) -> Vec<String> {
-    let n = packets.len();
-    let mut labels_before: Vec<Vec<String>> = vec![Vec::new(); n + 1];
-    let mut result_pkts = packets;
-    let mut standalone: Vec<Option<String>> = vec![None; n];
-
-    for i in CF_LEADING_PACKETS..n.saturating_sub(1) {
-        if rng.gen_range(0..4) != 0 {
-            continue;
-        }
-        let tgt = (i + 1 + rng.gen_range(1..=4usize)).min(n);
-        let label = format!(".Lcf_{}", i);
-        labels_before[tgt].push(label.clone());
-
-        let hint = if rng.gen_bool(0.5) { "t" } else { "nt" };
-        let neg = if rng.gen_bool(0.5) { "!" } else { "" };
-        let branch = match rng.gen_range(0..6) {
-            0 => format!("jump {}", label),
-            1 | 2 => format!(
-                "if ({}p{}) jump:{} {}",
-                neg,
-                rng.gen_range(0..4),
-                hint,
-                label
-            ),
-            _ => {
-                let (p, a) = (rng.gen_range(0..2), rng.gen_range(0..27));
-                let op = ["eq", "gt", "gtu"][rng.gen_range(0..3usize)];
-                let rhs = if rng.gen_bool(0.5) {
-                    format!("r{}", rng.gen_range(0..27))
-                } else {
-                    format!("#{}", rng.gen_range(0..32))
-                };
-                format!("p{p} = cmp.{op}(r{a},{rhs}) ; if ({neg}p{p}.new) jump:{hint} {label}")
-            }
+        let cf = CfOptions {
+            forward: recipe.synth.allow_control_flow,
+            hw_loops: recipe.synth.allow_hw_loops,
+            sw_loops: recipe.synth.allow_sw_loops,
+            calls: recipe.synth.allow_calls,
         };
+        let mut functions = Vec::new();
+        if cf.any() {
+            let out = control_flow::apply(packets, &cf, rng, &mut |rng| {
+                synth.synthesize_packet(rng).to_asm()
+            });
+            packets = out.body;
+            functions = out.functions;
+        }
 
-        // Compound compare-jumps and busy packets get their own packet;
-        // short plain-ALU packets absorb a simple branch.
-        let pkt = &result_pkts[i];
-        let slots = pkt.matches(';').count() + 1;
-        let plain = !(pkt.contains("mem") || pkt.contains(".new") || pkt.contains(" v"));
-        if branch.contains(".new") || slots > 2 || !plain {
-            standalone[i] = Some(format!("{{ {} }}", branch));
-        } else {
-            let body = pkt
-                .trim()
-                .trim_start_matches('{')
-                .trim_end_matches('}')
-                .trim();
-            result_pkts[i] = format!("{{ {} ; {} }}", body, branch);
-        }
+        Ok((packets, functions, instructions, candidate_names))
     }
-
-    let mut out = Vec::with_capacity(n * 2);
-    for i in 0..=n {
-        for l in &labels_before[i] {
-            out.push(format!("{}:", l));
-        }
-        if i < n {
-            out.push(result_pkts[i].clone());
-            if let Some(b) = standalone[i].take() {
-                out.push(b);
-            }
-        }
-    }
-    out
 }
 
 #[cfg(test)]
