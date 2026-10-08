@@ -192,6 +192,10 @@ if(TARGET mmu_cacheops)
     target_sources(mmu_cacheops PRIVATE src/dummy_mutex.S)
 endif()
 
+if(TARGET framelimit)
+    target_sources(framelimit PRIVATE src/framelimit_asm.S)
+endif()
+
 # hsv39_tlb uses tlbp with a 64-bit register pair (Y2_tlbpp), which requires
 # -mv81 or higher even though the rest of the test suite targets v68.
 if(TARGET hsv39_tlb)

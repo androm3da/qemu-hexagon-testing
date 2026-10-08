@@ -10,6 +10,9 @@
 #include "mmu.h"
 
 bool framelimit_exception_found;
+bool guest_exit_exception_found;
+
+extern void guest_framelimit_overflow(void);
 
 #define MIN_ALLOC_SIZE 8
 #define STACK_SIZE 0x1000
@@ -38,6 +41,7 @@ void check_for_framelimit_error_helper(uint32_t ssr)
         inc_elr(4); /* don't try to allocframe again */
         break;
     case HEX_CAUSE_PRIV_USER_NO_SINS:
+        guest_exit_exception_found = true;
         enter_kernel_mode();
         break;
     default:
@@ -85,6 +89,19 @@ void test_framelimit(bool overflow, bool user_mode)
     check32(framelimit_exception_found, overflow && user_mode);
 }
 
+static void test_framelimit_guest(void)
+{
+    framelimit_exception_found = false;
+    guest_exit_exception_found = false;
+    set_framelimit(get_stack_ptr() - STACK_SIZE);
+
+    guest_framelimit_overflow();
+
+    set_framelimit(0);
+    check32(framelimit_exception_found, true);
+    check32(guest_exit_exception_found, true);
+}
+
 int main()
 {
     puts("Testing FRAMELIMIT");
@@ -93,6 +110,7 @@ int main()
     test_framelimit(true, false);
     test_framelimit(false, true);
     test_framelimit(true, true);
+    test_framelimit_guest();
 
     puts(err ? "FAIL" : "PASS");
     return err;
