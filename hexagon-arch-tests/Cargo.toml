@@ -9,6 +9,9 @@ edition = "2021"
 [features]
 default = []
 uart = []
+# Packet-semantics tests (test_pkt_*): their packets are assembled by the
+# Hexagon SDK 21.0.04 assembler (HMX/HLX need it); see run_pkt_tests.sh.
+pkt = []
 
 [dependencies]
 bitflags = { version = "2", default-features = false }
@@ -85,3 +88,83 @@ path = "src/bin/test_hvx_context.rs"
 [[bin]]
 name = "test_dma"
 path = "src/bin/test_dma.rs"
+
+[[bin]]
+name = "test_pkt_regs"
+path = "src/bin/test_pkt_regs.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_newval"
+path = "src/bin/test_pkt_newval.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_mem_alias"
+path = "src/bin/test_pkt_mem_alias.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_pred"
+path = "src/bin/test_pkt_pred.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_cof"
+path = "src/bin/test_pkt_cof.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_shuffle"
+path = "src/bin/test_pkt_shuffle.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_usr"
+path = "src/bin/test_pkt_usr.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_addrmode"
+path = "src/bin/test_pkt_addrmode.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_replay_rw"
+path = "src/bin/test_pkt_replay_rw.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_replay_x"
+path = "src/bin/test_pkt_replay_x.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_excp_prio"
+path = "src/bin/test_pkt_excp_prio.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_hvx"
+path = "src/bin/test_pkt_hvx.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_hvx_mem"
+path = "src/bin/test_pkt_hvx_mem.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_priv"
+path = "src/bin/test_pkt_priv.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_hlx"
+path = "src/bin/test_pkt_hlx.rs"
+required-features = ["pkt"]
+
+[[bin]]
+name = "test_pkt_hmx"
+path = "src/bin/test_pkt_hmx.rs"
+required-features = ["pkt"]

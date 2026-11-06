@@ -59,6 +59,8 @@ if [[ -z "$SINGLE_TEST" ]]; then
     TESTS=()
     for f in "${BUILD_DIR}"/test_*; do
         [[ -f "$f" && -x "$f" && ! "$f" =~ \. ]] || continue
+        # test_pkt_* have their own runner (run_pkt_tests.sh): SDK 21.0.04, v85.
+        [[ "$(basename "$f")" == test_pkt_* ]] && continue
         TESTS+=("$(basename "$f")")
     done
     IFS=$'\n' TESTS=($(sort <<<"${TESTS[*]}")); unset IFS
